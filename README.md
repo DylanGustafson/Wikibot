@@ -17,14 +17,14 @@ Create a new user account on an Apple computer (MacOS 10.12 or later), and setup
 ## Use
 The command list can be seen by sending the message "help". Detailed info for a specific command can be found by typing "help [command name]". All commands are case-insensitive, and are listed below:
 
-*search* (or *get*) - Search for an article by title
-*toc* - Print the table of contents
-*next* (or “”) - Get the next part of the article
-*previous* (or *prev*) - Get the previous part of the article
-*section* (or *sect*) - Jump to a specified section (by name or number)
-*part* - Jump to a specified part of a section
-*all* - Get entire article text, rather than split by sections
-*limit* (or *lim*) - Set character limit for response messages
-*clear* - Clear out the cache for your article
-*help* - Print the help text
+* *search* (or *get*) - Search for an article by title
+* *toc* - Print the table of contents
+* *next* (or “”) - Get the next part of the article
+* *previous* (or *prev*) - Get the previous part of the article
+* *section* (or *sect*) - Jump to a specified section (by name or number)
+* *part* - Jump to a specified part of a section
+* *all* - Get entire article text, rather than split by sections
+* *limit* (or *lim*) - Set character limit for response messages
+* *clear* - Clear out the cache for your article
+* *help* - Print the help text
 *ping* - Ping bot to check connection
