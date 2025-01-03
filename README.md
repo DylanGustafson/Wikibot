@@ -1,7 +1,7 @@
 # Wikibot - iMessage Wikipedia Browser
 Many airlines offer free texting service in-flight, while charging for general Wifi service. This is a text message bot that allows you to browse Wikipedia for free during a flight by texting you a requested article's contents.
 
-![Screenshots](screenshot.png?raw=true)
+![Screenshot](https://raw.githubusercontent.com/DylanGustafson/Wikibot/main/screenshots.png)
 
 ## Background
 It is common these days for airlines to have a two-tiered in-flight Wifi service. The free tier will allow you to send and receive text messages via SMS, WhatsApp, or iMessage. This last service is interesting, as one can deploy a texting bot on any Apple computer that sends and receives texts via iMessage for free, no phone number required! This opens up the possibility to use iMessage as a kind of primitive web proxy. Media attachments are usually not possible via the free in-flight text services, so this proxy use-case is further limited to plaintext only. The obvious website to use for this is Wikipedia, as it is mostly text-based and has a simple API.
