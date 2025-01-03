@@ -154,7 +154,8 @@ def send_msg(msg, target):
     if len(msg) > MSG_HARD_LIMIT:
         msg = msg[:MSG_HARD_LIMIT - 3] + "..."
 
-    #Escape all quotation marks before building command
+    #Escape all backslashes and quotation marks before building command
+    msg = msg.replace("\\", "\\\\")
     msg = msg.replace('"', '\\"')
 
     #Build Applescript command to send message
@@ -334,11 +335,9 @@ def cmd_sect(arg, user):
     if user not in wiki_data:
         return no_article()
 
-    sections = wiki_data[user]["sections"]
-
     #Return current section number with name highlighted in TOC
     if arg == "?":
-        return f"Currently in section {wiki_data[user]['section_num']}\n\n{get_highlight_toc(user)}"
+        return f"Currently in Section {wiki_data[user]['section_num']}\n\n{get_highlight_toc(user)}"
 
     #Another way to get all sections. This feature should be removed if there are articles with single-word sections titled "All"
     if arg == "all":
@@ -350,8 +349,8 @@ def cmd_sect(arg, user):
         num = max(num, 0)
 
         message = ""
-        if num >= len(sections):
-            num = len(sections) - 1
+        if num >= len(wiki_data[user]["sections"]):
+            num = len(wiki_data[user]["sections"]) - 1
             message = stylize_text(f"Section number too large, jumping to Section {num} instead", "italic sans") + "\n\n"
 
         load_sect(num, user)
@@ -364,7 +363,7 @@ def cmd_sect(arg, user):
             load_sect(i, user)
             return get_current(user)
 
-    return "Section name not found!\n\n" + get_short_toc(user)
+    return "Section not found!\n\n" + get_short_toc(user)
 
 #Jump to specified section number and split into chunks using character limit - Internal use only
 def load_sect(number, user):
