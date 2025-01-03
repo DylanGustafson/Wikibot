@@ -9,7 +9,9 @@ It is common these days for airlines to have a two-tiered in-flight Wifi service
 <img src="https://raw.githubusercontent.com/DylanGustafson/Wikibot/main/delta.png" width=30% height=30%> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <img src="https://raw.githubusercontent.com/DylanGustafson/Wikibot/main/alaska.png" width=48% height=48%>
 
 ## Structure
-This Python script reads in text messages via iMessage and translates them into requests for Wikipedia's TextExtracts API. Content is then organized and formatted for display within the Messages app. The bot features a number of text commands that one can use to help navigate the article. Different articles can be loaded for different users, and anyone with the deployed bot's iCloud address can browse Wikipedia with their own session.
+This Python script reads in text messages via iMessage and translates them into requests for Wikipedia's TextExtracts API. Content is then organized and formatted for display within the Messages app. The bot features a number of text commands that one can use to help navigate the article.
+
+Different articles can be loaded for different users, and anyone with the deployed bot's iCloud address can browse Wikipedia with their own session. Group chats also get their own unique session.
 
 ## Setup
 Setting this bot up is somewhat involved and requires a dedicated Apple computer such as an old Macbook to run the script, as well as a fake iCloud account. It's not the most practical home server project out there, and probably not worth the money saved. However, it's a fun little trick and is something I now use whenever I fly.
