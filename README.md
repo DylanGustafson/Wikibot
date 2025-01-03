@@ -15,7 +15,7 @@ Setting this bot up is somewhat involved and requires a dedicated Apple computer
 Create a new user account on an Apple computer (MacOS 10.12 or later), and setup an iCloud account for this user. This generally requires a phone number, so get a free Google Voice number to use for this account. Enable the new account in Messages app and check that it can send and receive iMessages (it will not be able to send/receive SMS from Android). Download the python script and install any dependencies if needed. Run the script via Terminal using python3, and test by texting "ping" (or any other command) to the iCloud address from an iPhone or other Mac.
 
 ## Use
-The command list can be seen by sending the message "help". Detailed info for a specific command can be found by typing "help [command name]". All commands are case-insensitive, and are listed below:
+The command list can be seen by sending the message "help". Detailed info for a specific command can be found by typing "help *command name*". All commands are case-insensitive, and are listed below:
 
 * *search* (or *get*) - Search for an article by title
 * *toc* - Print the table of contents
@@ -27,4 +27,4 @@ The command list can be seen by sending the message "help". Detailed info for a 
 * *limit* (or *lim*) - Set character limit for response messages
 * *clear* - Clear out the cache for your article
 * *help* - Print the help text
-*ping* - Ping bot to check connection
+* *ping* - Ping bot to check connection
