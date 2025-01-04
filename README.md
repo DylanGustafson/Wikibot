@@ -39,5 +39,6 @@ The command list can be seen by sending the message "help". Detailed info for a 
 * *all* - Get entire article text, rather than split by sections
 * *limit* (or *lim*) - Set character limit for response messages
 * *clear* - Clear out the cache for your article
+* *disable* (or *stop*) - Disable wikibot
 * *help* - Print the help text
 * *ping* - Ping bot to check connection
