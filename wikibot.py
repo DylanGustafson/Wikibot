@@ -14,6 +14,9 @@ msg_lower_limit = 100
 #Default limit on text length for actual article chunks, overridden by msg_upper_limit and MSG_HARD_LIMIT
 default_limit = 2000
 
+#Global switch to enable/disable on all chats & group chats
+enabled = True
+
 #Undocumented iMessage database stuff that could change
 chat_db_path = "~/Library/Messages/chat.db"
 group_chat_prefix = "iMessage;+;"
@@ -78,12 +81,21 @@ def main():
         if msg == None:
             continue
 
-        #Form response message and send it to the proper chat
+        #Form response message
         try:
             response = get_response(msg, user)
+        except Exception as err:
+            log(f"Unhandled exception creating response: {err}")
+
+        #Nothing to send or bot is disabled - continue
+        if response == None:
+            continue
+
+        #Send response to the proper chat
+        try:
             send_msg(response, user)
         except Exception as err:
-            log(f"Unhandled exception: {err}")
+            log(f"Unhandled exception sending message: {err}")
 
 #Command-line interface mode for testing
 def cli():
@@ -95,7 +107,8 @@ def cli():
             return
 
         response = get_response(msg, "local")
-        print(f"\033[92m{response}\033[0m")
+        if response != None:
+            print(f"\033[92m{response}\033[0m")
 
 #Load and parse iMessage-specific components of new message
 def get_msg(cur, rowid):
@@ -125,11 +138,14 @@ def get_response(msg, user):
     msg = msg.strip()
 
     #Special cases
-    if msg == "":
-        return cmd_next(None, user)
-
-    num = cast_int(msg)
-    if num != None:
+    #Sending command to re-enable - only thing that is always checked
+    if msg.lower() == "wikibot enable":
+        return cmd_enable()
+    #Return now if enabled flag is not set
+    if not enabled:
+        return None
+    #If msg can be cast to an int, intepret as a section number
+    if cast_int(msg) != None:
         return cmd_sect(msg, user)
 
     #Separate command from arguments by splitting at first non-alphanumeric char (keeps all characters)
@@ -176,6 +192,9 @@ def send_msg(msg, target):
 
 #Request page via Wikipedia TextExtracts API and organize into wiki_data
 def cmd_search(title, user):
+    if title == "":
+        return cmd_help("search", user)
+
     #Set up wikipedia API query
     wiki_url = "https://en.wikipedia.org/w/api.php"
     req_params = {
@@ -449,11 +468,16 @@ def cmd_limit(arg, user):
     if user not in wiki_data:
         return no_article()
 
+    #No arg passed - display current limit and some help text
+    if arg == "":
+        return f"Current character limit is {wiki_data[user]['limit']}. Use " + \
+               stylize_text("limit ", "bold sans") + stylize_text("value", "bold italic sans") + " to modify."
+
     #Interpret arg as number or keyword "default"
     num = cast_int(arg)
     if num != None:
         new_lim = num
-    elif "default".startswith(arg):
+    elif "default".startswith(arg.lower()):
         new_lim = default_limit
     else:
         return "Please enter an actual number, like this:\n" + commands["limit"]["examp"]
@@ -489,6 +513,18 @@ def cmd_clear(arg, user):
 
     del wiki_data[user]
     return "Article cache cleared ;^)"
+
+#Disable wikibot for all users
+def cmd_disable(arg, user):
+    global enabled
+    enabled = False
+    return f"Wikibot disabled. Type " + stylize_text("wikibot enable", "bold sans") + " to re-enable."
+
+#Enable wikibot. Requires no arguments since it is only called directly as a special case
+def cmd_enable():
+    global enabled
+    enabled = True
+    return "Wikibot now enabled"
 
 #Get help text
 def cmd_help(arg, user):
@@ -540,7 +576,7 @@ def cmd_ping(arg, user):
 
 #Print message to console with datetime stamp
 def log(msg):
-    print(time.strftime("%F %T") + " - " + msg)
+    print(time.strftime("%F %T") + f" - {msg}")
 
 #Attempt to cast text as integer
 def cast_int(text):
@@ -588,7 +624,7 @@ commands = {
         "desc": "Search for an article by title",
         "usage": stylize_text("search ", "bold sans") + stylize_text("article title", "bold italic sans") + "\n" + \
                  stylize_text("get ", "bold sans") + stylize_text("article title", "bold italic sans"),
-        "examp": "search Pishpek\nget mauna  kea"},
+        "examp": "search Pishpek\nget mauna kea"},
     "toc": {
         "func": cmd_toc,
         "desc": "Print the table of contents"},
@@ -602,14 +638,14 @@ commands = {
     "section": {
         "func": cmd_sect,
         "desc": "Jump to a specified section (by name or number)",
-        "usage": stylize_text("section ", "bold sans") + stylize_text('name／number', 'bold italic sans') + "\n" + \
-                 stylize_text("sect ", "bold sans") + stylize_text('name／number', 'bold italic sans') + "\n\n" + \
+        "usage": stylize_text("section ", "bold sans") + stylize_text("name／number", "bold italic sans") + "\n" + \
+                 stylize_text("sect ", "bold sans") + stylize_text("name／number", "bold italic sans") + "\n\n" + \
                  "Alternatively just type the section number itself.",
         "examp": "section 3\nsect history\n4\nsect?"},
     "part": {
         "func": cmd_part,
         "desc": "Jump to a specified part of a section",
-        "usage": stylize_text("part ", "bold sans") + stylize_text('number', 'bold italic sans') + "\n\n" \
+        "usage": stylize_text("part ", "bold sans") + stylize_text("number", "bold italic sans") + "\n\n" \
                  + "Alternatively use keywords next/previous/first/last",
         "examp": "part 3\npart last"},
     "all": {
@@ -618,13 +654,16 @@ commands = {
     "limit": {
         "func": cmd_limit,
         "desc": "Set character limit for response messages",
-        "usage": stylize_text("limit ", "bold sans") + stylize_text('value', 'bold italic sans') + "\n" + \
-                 stylize_text("lim ", "bold sans") + stylize_text('value', 'bold italic sans') + "\n\n" + \
-                 "Set to {default_limit} by default, maximum is {msg_upper_limit}",
+        "usage": stylize_text("limit ", "bold sans") + stylize_text("value", "bold italic sans") + "\n" + \
+                 stylize_text("lim ", "bold sans") + stylize_text("value", "bold italic sans") + "\n\n" + \
+                 f"Set to {default_limit} by default, maximum is {msg_upper_limit}",
         "examp": "limit 3000\nlim 1500\nlim default"},
     "clear": {
         "func": cmd_clear,
         "desc": "Clear out the cache for your article"},
+    "disable": {
+        "func": cmd_disable,
+        "desc": "Disable wikibot"},
     "help": {
         "func": cmd_help,
         "desc": "Print the help text",
@@ -637,10 +676,11 @@ commands = {
 #Short form aliases for the important commands. Only the first alias of a given command will show up in the help text
 aliases = {
     "get":      "search",
+    "":         "next",
     "prev":     "previous",
     "sect":     "section",
     "lim":      "limit",
-    "":         "next"}
+    "stop":     "disable"}
 
 if __name__ == "__main__":
     main()
