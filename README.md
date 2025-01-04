@@ -1,4 +1,4 @@
-# Wikibot - iMessage Wikipedia Browser
+# Wikibot: iMessage-Based Wikipedia Browser
 Many airlines offer free texting service in-flight, while charging for general Wifi service. This is a text message bot that allows you to browse Wikipedia for free during a flight by texting you a requested article's contents.
 
 ![Screenshot](https://raw.githubusercontent.com/DylanGustafson/Wikibot/main/screenshots/wikibot.png)
@@ -22,11 +22,11 @@ Create a new user account on an Apple computer (MacOS 10.12 or later), and setup
 
 To run normally:
 ```console
-$ python3 wikibot.py
+python3 wikibot.py
 ```
 Or, to run the cross-platform CLI mode, which uses stdin/stdout for I/O rather than iMessage:
 ```console
-$ python3 wikibot.py cli
+python3 wikibot.py cli
 ```
 
 ## Use
