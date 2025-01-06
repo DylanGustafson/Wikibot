@@ -18,7 +18,7 @@ Different articles can be loaded for different users, and anyone with the deploy
 ## Setup
 Setting this bot up is somewhat involved and requires a dedicated Apple computer such as an old Macbook to run the script, as well as a fake iCloud account. It's not the most practical home server project out there, and probably not worth the money saved. However, it's a fun little trick and is something I now use whenever I fly.
 
-Create a new user account on an Apple computer (MacOS 10.12 or later), and setup an iCloud account for this user. This generally requires a phone number, so get a free Google Voice number to use for this account. Enable the new account in Messages app and check that it can send and receive iMessages (it will not be able to send/receive SMS with Android). Download wikibot.py onto this computer and install any dependencies if needed. Run the script via Terminal (directory does not matter), and test that it's working by texting a command message, such as "ping", to the new iCloud address from an iPhone or other Mac.
+Create a new user account on an Apple computer (MacOS 10.12 or later), and setup an iCloud account for this user. This generally requires a phone number, so get a free Google Voice number to use for this account. Enable the new account in Messages app and check that it can send and receive iMessages (it will not be able to send/receive SMS with Android phones). Download wikibot.py onto this computer and install any dependencies if needed. Run the script via Terminal (directory does not matter), and test that it's working by texting a command message, such as "ping", to the new iCloud address from an iPhone or other Mac.
 
 To run normally:
 ```console
