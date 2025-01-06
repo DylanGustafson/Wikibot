@@ -19,15 +19,16 @@ enabled = True
 
 #Undocumented iMessage database stuff that could change
 chat_db_path = "~/Library/Messages/chat.db"
+direct_chat_prefix = "iMessage;-;"
 group_chat_prefix = "iMessage;+;"
 message_table = "message"
 handle_table = "handle"
 sql_max_rowid = f"SELECT MAX(rowid) FROM {message_table}"
 sql_chk_new = f"SELECT is_from_me FROM {message_table} WHERE rowid="
-sql_load_new = ("SELECT h.id, cache_roomnames, text"
-               f" FROM {message_table} m LEFT JOIN {handle_table} h"
-                " ON h.rowid=m.handle_id"
-                " WHERE m.rowid=")
+sql_load_new = ("SELECT H.id, cache_roomnames, text"
+               f" FROM {message_table} M LEFT JOIN {handle_table} H"
+                " ON H.rowid=M.handle_id"
+                " WHERE M.rowid=")
 
 #User agent spoof; not actually needed for this API
 req_header = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X x.y; rv:42.0) Gecko/20100101 Firefox/42.0"}
@@ -77,7 +78,7 @@ def main():
             continue
 
         #Get text message contents and sender's id
-        (msg, user) = get_msg(cur, rowid - 1)
+        (msg, user) = get_imsg(cur, rowid - 1)
         if msg == None:
             continue
 
@@ -94,7 +95,7 @@ def main():
 
         #Send response to the proper chat
         try:
-            send_msg(response, user)
+            send_imsg(response, user)
         except Exception as err:
             log(f"Unhandled exception sending message: {err}")
 
@@ -112,7 +113,7 @@ def cli():
             print(f"\033[92m{response}\033[0m")
 
 #Load and parse iMessage-specific components of new message
-def get_msg(cur, rowid):
+def get_imsg(cur, rowid):
     #Select relevant columns; if they are empty, delay and retry
     max_retries = 3
     for i in range(max_retries):
@@ -128,9 +129,11 @@ def get_msg(cur, rowid):
         log(f"Gave up! Rowid = {rowid}")
         return (None, None)
 
-    #Group chats are handled slightly differently when sending text via Applescript
+    #Group chats referenced by chat ID rather than sender's contact number
     if group_chat:
         user = group_chat_prefix + group_chat
+    else:
+        user = direct_chat_prefix + user
 
     return (msg, user)
 
@@ -165,8 +168,8 @@ def get_response(msg, user):
     response = commands[cmd_text]["func"](arg_text, user)
     return response.strip()
 
-#Send iMessage text to specified target (phone number, email, or group chat id)
-def send_msg(msg, target):
+#Send iMessage text to specified target string "iMessage;-;[phone #]" or "iMessage;+;[group chat id]"
+def send_imsg(msg, target):
     #Hard limit on length in case a long message is sent erroneously
     if len(msg) > MSG_HARD_LIMIT:
         msg = msg[:MSG_HARD_LIMIT - 2] + "..."
@@ -175,17 +178,8 @@ def send_msg(msg, target):
     msg = msg.replace("\\", "\\\\")
     msg = msg.replace('"', '\\"')
 
-    #Build Applescript command to send message
-    send_cmd = f"tell application \"Messages\" to send \"{msg}\" to "
-
-    #Group chats and direct messages are handled differently
-    if target.startswith(group_chat_prefix):
-        send_cmd += f"(a reference to «class imct» id \"{target}\")"
-    else:
-        send_cmd += f"buddy \"{target}\" of (first service whose service type = iMessage)"
-
-    #Run Applescript send command
-    subprocess.run(["osascript", "-e", send_cmd])
+    #Build and run Applescript send command
+    subprocess.run(["osascript", "-e", f"tell application \"Messages\" to send \"{msg}\" to chat id \"{target}\""])
 
 #
 # Command functions
@@ -571,8 +565,13 @@ def cmd_help(arg, user):
 
     return response
 
+#Ping command for testing connection & response
 def cmd_ping(arg, user):
-    return "pong!"
+    #Echo alphanumeric message with a dividing space, otherwise no space
+    if arg and arg[0].isalnum():
+        arg = " " + arg
+
+    return "pong" + arg
 
 #
 # Misc. utility functions
