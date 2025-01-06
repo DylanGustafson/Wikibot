@@ -169,7 +169,7 @@ def get_response(msg, user):
 def send_msg(msg, target):
     #Hard limit on length in case a long message is sent erroneously
     if len(msg) > MSG_HARD_LIMIT:
-        msg = msg[:MSG_HARD_LIMIT - 3] + "..."
+        msg = msg[:MSG_HARD_LIMIT - 2] + "..."
 
     #Escape all backslashes and quotation marks before building command
     msg = msg.replace("\\", "\\\\")
