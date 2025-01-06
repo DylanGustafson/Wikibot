@@ -64,7 +64,7 @@ def main():
         #Check for new message in chat.db
         new_msg = cur.execute(sql_chk_new + str(rowid)).fetchone()
 
-        #No new message; wait 0.5 seconds and repeat
+        #No new message; wait 1 second and repeat
         if new_msg == None:
             time.sleep(1)
             continue
@@ -86,6 +86,7 @@ def main():
             response = get_response(msg, user)
         except Exception as err:
             log(f"Unhandled exception creating response: {err}")
+            continue
 
         #Nothing to send or bot is disabled - continue
         if response == None:
@@ -207,7 +208,7 @@ def cmd_search(title, user):
 
     #Get API response
     try:
-        req = requests.get(wiki_url, params = req_params, headers = req_header)
+        req = requests.get(wiki_url, params=req_params, headers=req_header)
         #log("Fetched JSON from " + req.url)
     except Exception as err:
         log(err)
@@ -235,13 +236,16 @@ def cmd_search(title, user):
     #Get TOC and Sections as separate arrays
     (new_toc, new_sections) = organize_page(new_extract)
 
-    #Save page data into cache for subsequent use
+    #Use default character limit if user is new
+    new_limit = wiki_data[user]["limit"] if user in wiki_data else default_limit
+
+    #Save page data into local cache for subsequent use
     wiki_data.update({user: {
         "title": stylize_text(new_title, "bold serif"),
         "toc": new_toc,
         "sections": new_sections,
         "section_num": 0,
-        "limit": default_limit}})
+        "limit": new_limit}})
 
     #Display title with redirect and short TOC as first response
     return wiki_data[user]["title"] + redirect_text + get_short_toc(user)
@@ -268,8 +272,8 @@ def organize_page(extract):
         sect_text = sect_parts[i + 1].strip()
 
         #Turn subsection titles (===Title===) bold, and sub-subsection titles (====Title====) bold italic
-        sect_text = format_headers(sect_text, "===", "bold sans")
-        sect_text = format_headers(sect_text, "====", "bold italic sans")
+        sect_text = format_subheaders(sect_text, "===", "bold sans")
+        sect_text = format_subheaders(sect_text, "====", "bold italic sans")
 
         new_toc += [sect_title]
         new_sections += [stylize_text(sect_title.upper(), "bold serif") + "\n\n" + sect_text]
@@ -277,7 +281,7 @@ def organize_page(extract):
     return (new_toc, new_sections)
 
 #Replaces wiki-formatted subsection titles (===Title=== or ====Title====) with stylized text and newlines
-def format_headers(extract, delimiter, style):
+def format_subheaders(extract, delimiter, style):
     #Split strictly along header delimiter (=== or ====). Regex is used so === can be handled before ====
     sub_parts = re.split(f"(?<!\\=){delimiter}(?!\\=)", extract)
 
@@ -392,7 +396,7 @@ def load_sect(number, user):
         section = ("\n\n\n" + chr(1)).join(wiki_data[user]["sections"])
         number = 0
 
-    #Otherwise load specific section number
+    #Otherwise load specified section number
     else:
         section = wiki_data[user]["sections"][number]
 
@@ -574,7 +578,7 @@ def cmd_ping(arg, user):
 # Misc. utility functions
 #
 
-#Print message to console with datetime stamp
+#Print message or exception to console with timestamp
 def log(msg):
     print(time.strftime("%F %T") + f" - {msg}")
 
