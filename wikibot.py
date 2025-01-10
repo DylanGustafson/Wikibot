@@ -1,17 +1,17 @@
-#Wikibot by Dylan G
+#Wikibot by Dylan G. (c) 2025
 import os, sys, re, time        #General stuff
 import requests                 #For Wikipedia API
 import sqlite3, subprocess      #For iMessage I/O
 
-#Applescript has no protections against sending a message long enough to crash iMessage (lol). 10100 is a safe but arbitrary choice.
-MSG_HARD_LIMIT = 10100
+#Applescript has no protections against sending a message long enough to crash iMessage (lol). 11,000 is a safe but arbitrary choice.
+IMSG_HARD_LIMIT = 11000
 
 #Upper and lower limits on the possible lengths of article chunks. These are separate from
-#MSG_HARD_LIMIT as they only apply to article chunks BEFORE possible postscripts are added.
+#IMSG_HARD_LIMIT as they only apply to article chunks BEFORE possible postscripts are added.
 msg_upper_limit = 10000
 msg_lower_limit = 100
 
-#Default limit on text length for actual article chunks, overridden by msg_upper_limit and MSG_HARD_LIMIT
+#Default limit on text length for actual article chunks, overridden by msg_upper_limit and IMSG_HARD_LIMIT
 default_limit = 2000
 
 #Global switch to enable/disable on all chats & group chats
@@ -21,14 +21,11 @@ enabled = True
 chat_db_path = "~/Library/Messages/chat.db"
 direct_chat_prefix = "iMessage;-;"
 group_chat_prefix = "iMessage;+;"
-message_table = "message"
-handle_table = "handle"
-sql_max_rowid = f"SELECT MAX(rowid) FROM {message_table}"
-sql_chk_new = f"SELECT is_from_me FROM {message_table} WHERE rowid="
-sql_load_new = ("SELECT H.id, cache_roomnames, text"
-               f" FROM {message_table} M LEFT JOIN {handle_table} H"
-                " ON H.rowid=M.handle_id"
-                " WHERE M.rowid=")
+sql_max_rowid = f"SELECT MAX(rowid) FROM message"
+sql_get_new = ("SELECT H.id, text, is_from_me, cache_roomnames"
+              f" FROM message M LEFT JOIN handle H"
+               " ON H.rowid=M.handle_id"
+               " WHERE M.rowid=")
 
 #User agent spoof; not actually needed for this API
 req_header = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X x.y; rv:42.0) Gecko/20100101 Firefox/42.0"}
@@ -41,7 +38,9 @@ wiki_data = {"Example User":
                  "section_num": 0,
                  "chunks": ["Example introduction"],
                  "chunk_num": 0,
-                 "limit": default_limit}}
+                 "limit": default_limit,
+                 "disambig": False,
+                 "links": ["Page link 1", "Page link 2", "Page link 3"]}}
 
 #
 # Core functions
@@ -62,29 +61,28 @@ def main():
 
     #Main loop - Monitor chat db for new messages and send responses
     while True:
-        #Check for new message in chat.db
-        new_msg = cur.execute(sql_chk_new + str(rowid)).fetchone()
+        #Attempt to load new message from chat.db
+        new_data = cur.execute(sql_get_new + str(rowid)).fetchone()
 
-        #No new message; wait 1 second and repeat
-        if new_msg == None:
+        #No new message or message hasnt finished downloading - wait 1 second and repeat
+        if new_data == None or any(col == None for col in new_data[:-1]):
             time.sleep(1)
             continue
 
-        #Update rowid
+        #Load contents into variables and update rowid
+        handle, text, is_from_me, room_name = new_data
         rowid += 1
 
         #If latest message is from bot itself, ignore it
-        if new_msg[0] == 1:
+        if is_from_me == 1:
             continue
 
-        #Get text message contents and sender's id
-        (msg, user) = get_imsg(cur, rowid - 1)
-        if msg == None:
-            continue
+        #If group chat: "iMessage;+;[group chat ID]", otherwise: "iMessage;-;[phone #]"
+        user = group_chat_prefix + room_name if room_name else direct_chat_prefix + handle
 
         #Form response message
         try:
-            response = get_response(msg, user)
+            response = get_response(text, user)
         except Exception as err:
             log(f"Unhandled exception creating response: {err}")
             continue
@@ -93,67 +91,45 @@ def main():
         if response == None:
             continue
 
-        #Send response to the proper chat
-        try:
-            send_imsg(response, user)
-        except Exception as err:
-            log(f"Unhandled exception sending message: {err}")
+        #Hard limit on length in case a long message is sent erroneously
+        if len(response) > IMSG_HARD_LIMIT:
+            response = response[:IMSG_HARD_LIMIT - 2] + "..."
+            log("iMessage hard limit exceeded")
+
+        #Send iMessage via Applescript. Using "on run()" to pass in response & user is safer than building a single "tell" statement
+        subprocess.run(["osascript",
+                        "-e", "on run(msg, target)",
+                        "-e", "tell application \"Messages\" to send msg to chat id target",
+                        "-e", "end run",
+                        response, user])
 
 #Command-line interface mode for testing
 def cli():
     print("Wikibot CLI mode - use 'q' to quit")
-    msg = ""
+    text = ""
     while True:
-        msg = input("> ")
-        if msg == "q":
+        text = input("> ")
+        if text == "q":
             return
 
-        response = get_response(msg, "local")
+        response = get_response(text, "local")
         if response != None:
             print(f"\033[92m{response}\033[0m")
-
-#Load and parse iMessage-specific components of new message
-def get_imsg(cur, rowid):
-    #Select relevant columns; if they are empty, delay and retry
-    max_retries = 3
-    for i in range(max_retries):
-        #Attempt to load message contents from chat.db
-        (user, group_chat, msg) = cur.execute(sql_load_new + str(rowid)).fetchone()
-        if user != None and msg != None:
-            break
-        log(f"Text attempt {i + 1} failed")
-        time.sleep(3)
-
-    #Give up by sending back None's
-    if msg == None:
-        log(f"Gave up! Rowid = {rowid}")
-        return (None, None)
-
-    #Group chats referenced by chat ID rather than sender's contact number
-    if group_chat:
-        user = group_chat_prefix + group_chat
-    else:
-        user = direct_chat_prefix + user
-
-    return (msg, user)
 
 #Get text response from text input. Not iMessage-specific
 def get_response(msg, user):
     msg = msg.strip()
 
-    #Special cases
-    #Sending command to re-enable - only thing that is always checked
-    if msg.lower() == "wikibot enable":
-        return cmd_enable()
-    #Return now if enabled flag is not set
+    #If not enabled, check if its the specifal reactivtion text, other return None
     if not enabled:
-        return None
-    #If msg can be cast to an int, intepret as a section number
-    if cast_int(msg) != None:
-        return cmd_sect(msg, user)
+        return cmd_enable() if msg.lower() == "wikibot enable" else None
+
+    #If msg can be cast to an int, intepret as a page link if on a disambiguation page, otherwise section number
+    if user in wiki_data and cast_int(msg) != None:
+        return cmd_link(msg, user) if wiki_data[user]["disambig"] else cmd_sect(msg, user)
 
     #Separate command from arguments by splitting at first non-alphanumeric char (keeps all characters)
-    (cmd_text, arg_text) = re.split(r"(?![A-Za-z0-9])", msg, 1)
+    cmd_text, arg_text = re.split(r"(?![A-Za-z0-9])", msg, 1)
     cmd_text = cmd_text.lower()
     arg_text = arg_text.lstrip()
 
@@ -168,24 +144,11 @@ def get_response(msg, user):
     response = commands[cmd_text]["func"](arg_text, user)
     return response.strip()
 
-#Send iMessage text to specified target string "iMessage;-;[phone #]" or "iMessage;+;[group chat id]"
-def send_imsg(msg, target):
-    #Hard limit on length in case a long message is sent erroneously
-    if len(msg) > MSG_HARD_LIMIT:
-        msg = msg[:MSG_HARD_LIMIT - 2] + "..."
-
-    #Escape all backslashes and quotation marks before building command
-    msg = msg.replace("\\", "\\\\")
-    msg = msg.replace('"', '\\"')
-
-    #Build and run Applescript send command
-    subprocess.run(["osascript", "-e", f"tell application \"Messages\" to send \"{msg}\" to chat id \"{target}\""])
-
 #
 # Command functions
 #
 
-#Request page via Wikipedia TextExtracts API and organize into wiki_data
+#Request page via Wikipedia TextExtracts API and organize into and entry for wiki_data
 def cmd_search(title, user):
     if title == "":
         return cmd_help("search", user)
@@ -195,7 +158,8 @@ def cmd_search(title, user):
     req_params = {
         "action": "query",
         "format": "json",
-        "prop": "extracts",
+        "prop": "extracts|pageprops",
+        "ppprop": "disambiguation",
         "redirects" : "1",
         "explaintext": "1",
         "titles": title}
@@ -203,10 +167,8 @@ def cmd_search(title, user):
     #Get API response
     try:
         req = requests.get(wiki_url, params=req_params, headers=req_header)
-        #log("Fetched JSON from " + req.url)
     except Exception as err:
         log(err)
-        print(req_params)
         return "Wikipedia won't talk to me :'^("
 
     #Check if response matches expected format
@@ -222,13 +184,27 @@ def cmd_search(title, user):
         log(err)
         return "I can't even tell what Wikipedia sent me =^("
 
-    #Get redirect text if applicable. This is not cached; it's only displayed when first loading an article
-    redirect_text = "\n"
-    if "redirects" in json_data:
-        redirect_text += f"(Redirected from {title})\n\n"
+    #Non-cached article preview that displays after first retrieving an article
+    preview = "\n"
 
-    #Get TOC and Sections as separate arrays
-    (new_toc, new_sections) = organize_page(new_extract)
+    #Check if this is a disambiguation page containing monstly links
+    new_links = []
+    new_disambig = "pageprops" in page_data
+
+    #Disambiguation page: split along page choices
+    if new_disambig:
+        new_extract, new_links = get_disambig_links(new_extract, new_title)
+
+        #Add "disambiguation" to title along with instructions (not cached)
+        new_title += " (Disambiguation)"
+        preview += stylize_text("Enter an item number to be taken to its article\n\n", "italic sans")
+
+    #Normal article: add redirect notice if applicable
+    elif "redirects" in json_data:
+        preview += f"(Redirected from {title})\n\n"
+
+    #Split along major sections and extract TOC
+    new_toc, new_sections = organize_sections(new_extract)
 
     #Use default character limit if user is new
     new_limit = wiki_data[user]["limit"] if user in wiki_data else default_limit
@@ -239,18 +215,51 @@ def cmd_search(title, user):
         "toc": new_toc,
         "sections": new_sections,
         "section_num": 0,
-        "limit": new_limit}})
+        "limit": new_limit,
+        "disambig": new_disambig,
+        "links": new_links}})
 
-    #Display title with redirect and short TOC as first response
-    return wiki_data[user]["title"] + redirect_text + get_short_toc(user)
+    #Article preview: Full text if disambiguation page, TOC for normal articles
+    preview += cmd_all("", user) if new_disambig else get_short_toc(user)
+
+    #Include total article length in kB at end of preview (not cached)
+    total = len("".join(new_sections)) / 1000
+    total = round(total, 1) if total < 10 else int(total)
+    preview += f"\n\nTotal: {total} kB"
+
+    #Display title and non-cached preview as first response
+    return wiki_data[user]["title"] + preview
+
+#Enumerate links and extract page names from disambiguation page text
+def get_disambig_links(extract, title):
+    #Chop off just before "see also" section
+    extract = extract.split("==.?See also.?==")[0].strip()
+
+    #Split along non-header text (doesnt start with '=') that's preceded by a newline and followed by a newline or comma
+    link_parts = re.split(r"(?<=\n)(?!\=)(.+?)(?=,|\n)", extract)
+
+    #Extract page names into toc, and number them in the article text. Even elements contain the text between page links
+    new_links = []
+    for i in range(1, len(link_parts), 2):
+        #Get page name but remove all double quotes
+        page_name = re.sub('"|“|”', '', link_parts[i])
+
+        #If page name is just the article title, add the next group after its comma (comma in page name, ie a placename)
+        if page_name.lower() == title.lower():
+            new_match = re.search(r",(.+?)(?=,|\n)", link_parts[i + 1])
+            page_name += new_match.group() if new_match else ""
+
+        #Add page name to TOC
+        new_links += [page_name]
+
+        #Insert numbering next to each page name, starting at 1
+        link_parts[i] = f"{str(len(new_links))}. {link_parts[i]}"
+
+    #Recombine link_parts as new extract
+    return "".join(link_parts), new_links
 
 #Organize page text from TextExtracts API into separate sections and titles - Internal use only
-def organize_page(extract):
-    #Add newlines erroneously removed by API. Capital letters that immediately follow '.' get
-    #inserted newlines, unless followed by another '.', such as 'C.E.'
-    #Update - this API bug appears to be fixed now
-    #extract = re.sub(r"\.(?=[A-Z]?!\.)", ".\n\n", extract)
-
+def organize_sections(extract):
     #Split by major sections (delimited by ==). Add section name "Introduction" at the start
     sect_parts = ["Introduction"] + re.split(r"(?<!\=)==(?!\=)", extract)
 
@@ -266,16 +275,16 @@ def organize_page(extract):
         sect_text = sect_parts[i + 1].strip()
 
         #Turn subsection titles (===Title===) bold, and sub-subsection titles (====Title====) bold italic
-        sect_text = format_subheaders(sect_text, "===", "bold sans")
-        sect_text = format_subheaders(sect_text, "====", "bold italic sans")
+        sect_text = format_headers(sect_text, "===", "bold sans")
+        sect_text = format_headers(sect_text, "====", "bold italic sans")
 
         new_toc += [sect_title]
         new_sections += [stylize_text(sect_title.upper(), "bold serif") + "\n\n" + sect_text]
 
-    return (new_toc, new_sections)
+    return new_toc, new_sections
 
-#Replaces wiki-formatted subsection titles (===Title=== or ====Title====) with stylized text and newlines
-def format_subheaders(extract, delimiter, style):
+#Replaces wiki-formatted headers (==Title==, ===Title===, ====Title====) with stylized text and newlines
+def format_headers(extract, delimiter, style):
     #Split strictly along header delimiter (=== or ====). Regex is used so === can be handled before ====
     sub_parts = re.split(f"(?<!\\=){delimiter}(?!\\=)", extract)
 
@@ -288,6 +297,23 @@ def format_subheaders(extract, delimiter, style):
             sub_parts[i] = stylize_text("-subsection contains no text-", "italic sans")
 
     return "\n".join(sub_parts)
+
+#link command, used to open links via numerical input from a disambiguation page (not actually in cmd list)
+def cmd_link(msg, user):
+    page_num = cast_int(msg)
+    if page_num == None:
+        return "Please input a number"
+
+    #Compare input to total number of saved links
+    total = len(wiki_data[user]["links"])
+    if total == 0:
+        return "There are no numbered links in this article!"
+
+    if page_num > total or page_num < 1:
+        return f"Please enter a value between 1 and {total}"
+
+    #Search for specified page title, found in toc
+    return cmd_search(wiki_data[user]["links"][page_num - 1], user)
 
 #Display article title and numbered table of contents
 def cmd_toc(arg, user):
@@ -386,9 +412,16 @@ def cmd_sect(arg, user):
 def load_sect(number, user):
     #Special case -1: Concatenate sections and load these into the chunks
     if number == -1:
-        #Triple newlines plus invisible char <ascii 1> to help track section number
-        section = ("\n\n\n" + chr(1)).join(wiki_data[user]["sections"])
+        #Sections separated by double newlines for disambiguation page, triple newline for normal article
+        newlines = "\n\n" if wiki_data[user]["disambig"] else "\n\n\n"
+
+        #Newlines plus invisible char <ascii 1> to help track section number in TOC
+        section = (newlines + chr(1)).join(wiki_data[user]["sections"])
         number = 0
+
+        #For disambiguation pages, chop off "Introduction" text
+        if wiki_data[user]["disambig"]:
+            section = section.split("\n\n", 1)[-1]
 
     #Otherwise load specified section number
     else:
@@ -450,6 +483,7 @@ def cmd_part(arg, user):
         num = max(num, 1)
         message = ""
 
+        #Cap part # request at maximum (final)
         if num > len(wiki_data[user]["chunks"]):
             num = len(wiki_data[user]["chunks"])
             message = stylize_text(f"Part number too large, jumping to part {num} instead", "italic sans") + "\n\n"
@@ -459,7 +493,7 @@ def cmd_part(arg, user):
         return message + get_current(user)
 
     #Give up message
-    return "Part not found! Use numbers or the keywords next/previous/first/last"
+    return "Part not found! Use a number or the keywords next/previous/first/last"
 
 #Set max character limit, overrided by msg_upper_limit
 def cmd_limit(arg, user):
@@ -491,7 +525,7 @@ def cmd_limit(arg, user):
         response = f"New character limit set to {new_lim}"
 
     wiki_data[user]["limit"] = new_lim
-    return response + ". Change will take effect when a new section or article is loaded"
+    return response + ". Change will take effect when a new section or article is loaded."
 
 #Error message when no article has been loaded first
 def no_article():
@@ -516,12 +550,16 @@ def cmd_clear(arg, user):
 def cmd_disable(arg, user):
     global enabled
     enabled = False
+
+    log("Wikibot disabled")
     return f"Wikibot disabled. Type " + stylize_text("wikibot enable", "bold sans") + " to re-enable."
 
 #Enable wikibot. Requires no arguments since it is only called directly as a special case
 def cmd_enable():
     global enabled
     enabled = True
+
+    log("Wikibot enabled")
     return "Wikibot now enabled"
 
 #Get help text
@@ -530,7 +568,7 @@ def cmd_help(arg, user):
     if arg in aliases and arg != "":
         arg = aliases[arg]
 
-    #Help with specific command in list?
+    #Help with specific command in list? Just return usage & examples for that command
     if arg in commands:
         info = commands[arg]
         response = info["usage"] if "usage" in info else "This command takes no arguments"
@@ -540,27 +578,32 @@ def cmd_help(arg, user):
 
         return response
 
-    #If some other arg was passed, give error message and command list only
+    #If some other arg was passed, give error message before listing command
     elif arg != "":
         response = "Command not found!"
 
-    #If no arg was passed, include additional instructions for the help command itself
+    #If no arg was passed, include additional instructions for the help command itself, then list commands
     else:
         response = f"Type {stylize_text('help', 'bold sans')} {stylize_text('command', 'bold italic sans')} to see specific command usage."
 
     response += "\n\n" + stylize_text("COMMAND LIST", "bold sans")
 
+    #For pulling current aliases
     alias_keys = list(aliases.keys())
     aliased_cmds = list(aliases.values())
 
+    #Pull command names and aliases from the respective dictionaries, along with their descriptions
     for cmd_name, info in commands.items():
         response += "\n" + stylize_text(cmd_name, "bold sans")
 
+        #Include alias if it exists. Only prints the first alias for each command
         if cmd_name in aliased_cmds:
-            alias = stylize_text(alias_keys[aliased_cmds.index(cmd_name)], "bold sans")
-            alias = "“”" if alias == "" else alias
+            #Retrieve alias name and make bold. If its blank, just write quotes
+            alias = alias_keys[aliased_cmds.index(cmd_name)]
+            alias = "“”" if alias == "" else stylize_text(alias, "bold sans")
             response += f" (or {alias})"
 
+        #Add command descriptions
         response += " - " + info["desc"]
 
     return response
@@ -589,7 +632,7 @@ def cast_int(text):
         return None
 
 #Stylize alphanumeric plain text into bold, italic, and/or serif using UTF-8 mathematical characters. Cannot italicize numbers.
-def stylize_text(text, style_name="bold sans"):
+def stylize_text(text, style_name):
     #syntax:  "style name":        [(0-9) , (A-Z) , (a-z) , [(exceptions initial)], [(exceptions final)]]
     styles = {"bold sans":         [120764, 120211, 120205],
               "italic sans":       [     0, 120263, 120257],
@@ -600,8 +643,6 @@ def stylize_text(text, style_name="bold sans"):
               "doublestruck":      [120744, 120055, 120049, [67, 72, 78, 80, 81, 82, 90], [8450, 8461, 8469, 8473, 8474, 8477, 8484]]}
 
     #Load offset values based on style name
-    if style_name not in styles:
-        return text
     offsets = styles[style_name]
 
     #Loop through each character and replace alphanumeric chars with stylized symbols
@@ -656,7 +697,7 @@ commands = {
         "desc": "Get entire article text, rather than split by sections"},
     "limit": {
         "func": cmd_limit,
-        "desc": "Set character limit for response messages",
+        "desc": "Set soft character limit for response messages",
         "usage": stylize_text("limit ", "bold sans") + stylize_text("value", "bold italic sans") + "\n" + \
                  stylize_text("lim ", "bold sans") + stylize_text("value", "bold italic sans") + "\n\n" + \
                  f"Set to {default_limit} by default, maximum is {msg_upper_limit}",
