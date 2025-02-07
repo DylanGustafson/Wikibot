@@ -21,9 +21,9 @@ enabled = True
 chat_db_path = "~/Library/Messages/chat.db"
 direct_chat_prefix = "iMessage;-;"
 group_chat_prefix = "iMessage;+;"
-sql_max_rowid = f"SELECT MAX(rowid) FROM message"
+sql_max_rowid = "SELECT MAX(rowid) FROM message"
 sql_get_new = ("SELECT H.id, text, is_from_me, cache_roomnames"
-              f" FROM message M LEFT JOIN handle H"
+               " FROM message M LEFT JOIN handle H"
                " ON H.rowid=M.handle_id"
                " WHERE M.rowid=")
 
