@@ -120,11 +120,11 @@ def cli():
 def get_response(msg, user):
     msg = msg.strip()
 
-    #If not enabled, check if its the specifal reactivtion text, other return None
+    #If not enabled, check if its the special reactivation text, other return None
     if not enabled:
         return cmd_enable() if msg.lower() == "wikibot enable" else None
 
-    #If msg can be cast to an int, intepret as a page link if on a disambiguation page, otherwise section number
+    #If msg can be cast to an int, interpret as a page link if on a disambiguation page, otherwise section number
     if user in wiki_data and cast_int(msg) != None:
         return cmd_link(msg, user) if wiki_data[user]["disambig"] else cmd_sect(msg, user)
 
@@ -238,7 +238,7 @@ def get_disambig_links(extract, title):
     #Split along non-header text (doesnt start with '=') that's preceded by a newline and followed by a newline or comma
     link_parts = re.split(r"(?<=\n)(?!\=)(.+?)(?=,|\n)", extract)
 
-    #Extract page names into toc, and number them in the article text. Even elements contain the text between page links
+    #Extract page names into TOC, and number them in the article text. Even elements contain the text between page links
     new_links = []
     for i in range(1, len(link_parts), 2):
         #Get page name but remove all double quotes
@@ -288,7 +288,7 @@ def format_headers(extract, delimiter, style):
     #Split strictly along header delimiter (=== or ====). Regex is used so === can be handled before ====
     sub_parts = re.split(f"(?<!\\=){delimiter}(?!\\=)", extract)
 
-    #Strip each part and stylize every other to create formatted hearders
+    #Strip each part and stylize every other to create formatted headers
     for i in range(len(sub_parts)):
         sub_parts[i] = sub_parts[i].strip()
         if i % 2 == 1:
@@ -312,7 +312,7 @@ def cmd_link(msg, user):
     if page_num > total or page_num < 1:
         return f"Please enter a value between 1 and {total}"
 
-    #Search for specified page title, found in toc
+    #Search for specified page title, found in TOC
     return cmd_search(wiki_data[user]["links"][page_num - 1], user)
 
 #Display article title and numbered table of contents
@@ -495,7 +495,7 @@ def cmd_part(arg, user):
     #Give up message
     return "Part not found! Use a number or the keywords next/previous/first/last"
 
-#Set max character limit, overrided by msg_upper_limit
+#Set max character limit, overridden by msg_upper_limit
 def cmd_limit(arg, user):
     if user not in wiki_data:
         return no_article()
